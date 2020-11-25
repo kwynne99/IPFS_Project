@@ -195,12 +195,16 @@ void Sender::cmdPrompt() {
 		}
 		else if (!temp.compare(0, 5, "touch")) {
 			std::string fName, fText;
+			/*for (addrinfo& client : clientList) {
+				iResult = sendto(SendSocket, buffer, 256, 0, client.ai_addr, (int)client.ai_addrlen);
+			}*/
 			//auto first_token = s.substr(0, s.find(' '));
-			fName = temp.substr(6, temp.find(' '));
-			fText = temp.substr(temp.find(' ') + 1, temp.find('\0'));
+			fName = temp.substr(6, 4); // touch test hello
+			fText = temp.substr(11, 5);		//01234567891011
 			printf("Run touch and send blocks.\n");
 			//After sending block, wait for response from that peer with location.
 			sandisc.touch(fName, fText, peerList);
+			printf("Touch command completed.\n");
 		}
 		else if (!strcmp(buffer, "exit")) {
 			for (addrinfo &client : clientList) {

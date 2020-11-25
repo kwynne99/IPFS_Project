@@ -1,22 +1,39 @@
+#pragma once
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <string> 
 
 #include "helper.h"
+#include "sender.h"
 
 using namespace std;
 
 class discEmulator {
+private:
+    //these can only be altered by touch, mkdir, append, write
+    string disc;
+    int topFreeBlockIndex = 0;
+    //freeBlocksQuantity is based on blockQuantity and can be altered by the constructor
+    //  that has parameters but is also reduced/increase when blocks are allocated/deallocated
+    int freeBlockQuantity = 50;
+    //specifications that can be altered by the constructor that has parameters
+    int blockQuantity = 50;
+    int blockSize = 20;
+    int fatSize = 300;
+    int lineLength = 100;//length of lines in disc.txt
+    string fileName;
+    int indexLength = 2;//number of characters in blocks reserved for indexes
 public:
+    //constructor that uses default specifications
+    discEmulator();
+    discEmulator(string fN);
     //constructor that uses user's specifications
     //  blockSize must be >= 1 + 2 * indexLength
     //  if it is not, blockSize will be increased until it is
     //todo: save user specifications so they can be accessed after
     //  program stops running
     discEmulator(int bQ, int bS, int fS, int lL, string fN, int iL);
-    //constructor that uses default specifications
-    discEmulator();
     //writes the disc string to disc.txt
     void paste();
     //writes text to a file with the name as fileName
@@ -32,21 +49,6 @@ public:
     void updateFat(string newFatEntry);
     //return index of top free block
     int getTopFreeBlockIndex();
-
-private:
-    //these can only be altered by touch, mkdir, append, write
-    string disc;
-    int topFreeBlockIndex = 0;
-    //freeBlocksQuantity is based on blockQuantity and can be altered by the constructor
-    //  that has parameters but is also reduced/increase when blocks are allocated/deallocated
-    int freeBlockQuantity = 50;
-    //specifications that can be altered by the constructor that has parameters
-    int blockQuantity = 50;
-    int blockSize = 20;
-    int fatSize = 300;
-    int lineLength = 100;//length of lines in disc.txt
-    string fileName = "disc.txt";
-    int indexLength = 2;//number of characters in blocks reserved for indexes
 };
 
 /*int main() {
@@ -102,6 +104,39 @@ discEmulator::discEmulator(int bQ, int bS, int fS, int lL, string fN, int iL) {
 }
 
 discEmulator::discEmulator() {
+    fileName = "disc.txt";
+    string temp_str;
+    ifstream read(fileName);
+    while (getline(read, temp_str)) {
+        disc += temp_str;
+    }
+    read.close();
+    if (disc == "") {
+        for (int i = 0; i < fatSize; i++) {
+            disc += '@';
+        }
+        for (int i = 0; i < blockQuantity; i++) {
+            string block(blockSize - 2, '@');
+            string nextBlockIndex = to_string(i + 1);
+            nextBlockIndex = appendZeroIfShort(nextBlockIndex, indexLength);
+            if (i == blockQuantity - 1) {
+                nextBlockIndex = convertToEnd(nextBlockIndex);
+            }
+            block += nextBlockIndex;
+            disc += block;
+        }
+        disc += appendZeroIfShort(to_string(0), indexLength);
+        disc += appendZeroIfShort(to_string(blockQuantity), indexLength);
+    }
+    else {
+        topFreeBlockIndex = stoi(disc.substr(fatSize + blockQuantity * blockSize, indexLength));
+        freeBlockQuantity = stoi(disc.substr(fatSize + blockQuantity * blockSize + indexLength, indexLength));
+        //cout<<topFreeBlockIndex<<" "<<freeBlockQuantity<<endl;
+    }
+}
+
+discEmulator::discEmulator(string fN) {
+    fileName = fN;
     string temp_str;
     ifstream read(fileName);
     while (getline(read, temp_str)) {
@@ -170,30 +205,44 @@ int discEmulator::getNextBlockIndex(int index) {
 
 void discEmulator::allocate(string text, int indexToInsert) {
     cout << text << endl;
+    int count{ 0 };
     int startIndex = fatSize + indexToInsert * blockSize;
     for (int i = startIndex; i < startIndex + blockSize; i++) {
-        disc[i] = text[i - startIndex];
+        disc[i] = text[count];
+        count++;
+        if (count == text.length())
+            break;
     }
     setTopFreeBlockIndex(indexToInsert + 1);
+    topFreeBlockIndex = indexToInsert + 1;
     freeBlockQuantity--;
     setFreeBlockQuantity(freeBlockQuantity);
+    //paste();
 }
 
 void discEmulator::touch(string fileName, string text, vector<PEER> peerList) {
     //send signal for users to be in receive mode
+    printf("Touch has been called.\n");
+    SOCKET SendSocket = socket(AF_UNSPEC, SOCK_DGRAM, IPPROTO_UDP);
     string newFatEntry = fileName;
     int recvTopFreeBlock;
     discEmulator recv;
-    SOCKET s = INVALID_SOCKET;
-    s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     for (int i = 0; i < text.length(); i += blockSize) {
         string newBlock = text.substr(i, blockSize);
-        sendto(s, (char*)&newBlock, sizeof newBlock, 0, peerList[i / 20 % peerList.size()].address.ai_addr, peerList[i / 20 % peerList.size()].address.ai_addrlen);
-        recvfrom(s, (char*)&recvTopFreeBlock, sizeof recvTopFreeBlock, 0, 0, 0);
-        newFatEntry += 'p' + to_string(i / 20 % peerList.size()) + ',' + to_string(recvTopFreeBlock) + '/';
+        char buffer[256] = "touch";
+        sendto(SendSocket, buffer, 256, 0, peerList[i / 20 % peerList.size()].address.ai_addr, peerList[i / 20 % peerList.size()].address.ai_addrlen);
+        sendto(SendSocket, newBlock.c_str(), blockSize, 0, peerList[i / 20 % peerList.size()].address.ai_addr, peerList[i / 20 % peerList.size()].address.ai_addrlen);
+        recvfrom(SendSocket, (char*)&recvTopFreeBlock, sizeof recvTopFreeBlock, 0, 0, 0);
+        printf("Sender: Received BlockIndex for FAT entry: %d\n", recvTopFreeBlock);
+        newFatEntry += 'p';
+        newFatEntry += peerList[i / 20 % peerList.size()].name;
+        newFatEntry +=',';
+        newFatEntry += to_string(recvTopFreeBlock) + '/';
     }
     for (PEER& peer : peerList) {
-        sendto(s, (char*)&newFatEntry, sizeof newFatEntry, 0, peer.address.ai_addr, peer.address.ai_addrlen);
+        char buffer[256] = "update";
+        sendto(SendSocket, buffer, 256, 0, peer.address.ai_addr, peer.address.ai_addrlen); // Signals peers to receive a newFatEntry to update their FAT.
+        sendto(SendSocket, newFatEntry.c_str(), sizeof newFatEntry, 0, peer.address.ai_addr, peer.address.ai_addrlen); // Sending the newFatEntry
     }
     
     /*for (int i = 0; i < text.length(); i += blockSize - indexLength) {
@@ -217,7 +266,7 @@ void discEmulator::touch(string fileName, string text, vector<PEER> peerList) {
             cout << lastMarker << endl;
         }
         allocate(newBlock, indexToInsert);
-    }*/
+    }
 
     int entryLength = newFatEntry.length();
     int entryIndex = 0;
@@ -229,6 +278,7 @@ void discEmulator::touch(string fileName, string text, vector<PEER> peerList) {
         }
     }
     paste();
+    */
 }
 
 void discEmulator::updateFat(string newFatEntry) {
@@ -241,6 +291,7 @@ void discEmulator::updateFat(string newFatEntry) {
             entryIndex++;
         }
     }
+    paste();
 }
 
 int discEmulator::getTopFreeBlockIndex() {

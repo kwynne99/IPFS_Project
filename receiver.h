@@ -22,7 +22,7 @@ private:
 	int sockfd = 0, newsockfd = 0, portno = 0;
 	socklen_t clientLen;
 	struct sockaddr_in serv_addr, client_addr;
-	char buffer[256];
+	//char buffer[256];
 	struct CLIENTLIST clientList;
 	std::vector<int> peerList;
 public:
@@ -42,11 +42,17 @@ Receiver::Receiver(std::string rPort) {
 
 void Receiver::startReceiver() {
 	// Create FAT
-	discEmulator sandisc = discEmulator();
+	char peername;
+	std::string fileName;
+	peername = '0' + (atoi(receiverPort.c_str()) % 8000);
+	fileName = peername;
+	fileName += "disc.txt";
+	discEmulator sandisc(fileName);
+	//discEmulator sandisc = discEmulator();
 	WSADATA wsaData;
 	int iResult;
 	int totalReceived = 0, totalSent = 0;
-	int i;
+	//int i;
 
 	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (iResult != 0) {
@@ -92,34 +98,42 @@ void Receiver::startReceiver() {
 	printf("** Receiver started **\n");
 	printf("Hostname: %s\nPort#:%s\n", HOSTNAME, receiverPort.c_str());
 
-	SOCKET ClientSocket; // Temporary socket used to accept connections.
+	//SOCKET ClientSocket; // Temporary socket used to accept connections.
 	struct sockaddr_in SenderAddr;
 	int SenderAddrSize = sizeof SenderAddr;
-	std::string temp;
-	do {
+	while (TRUE) {
+		char buffer[256];
 		iResult = recvfrom(ListenSocket, buffer, BUFFER_SIZE, 0, (SOCKADDR *)&SenderAddr, (int*)&SenderAddrSize);
-		temp = buffer;
 		if (iResult > 0) {
 			if (!strcmp(buffer, "exit")) {
 				std::cout << SenderAddr.sin_port << " has shutdown." << std::endl; // Remove this node from table.
 			}
-			else if (!temp.compare(0, 5, "touch")) {
+			//else if (!temp.compare(0, 5, "touch")) {
+			else if (!strcmp(buffer, "touch")) {
+				printf("Receiver: touch command has been used, waiting to receive block...\n");
 				// Get ready for incoming block and then allocate.
-				iResult = recvfrom(ListenSocket, buffer, BUFFER_SIZE, 0, (SOCKADDR*)&SenderAddr, (int*)&SenderAddrSize);
+				char blockBuffer[20];
+				iResult = recvfrom(ListenSocket, blockBuffer, 20, 0, (SOCKADDR*)&SenderAddr, (int*)&SenderAddrSize);
 				// After allocating block, send location back.
+				std::string allocString = blockBuffer;
+				std::cout << "Receiver: " << allocString << std::endl;
 				int freeBlock = sandisc.getTopFreeBlockIndex();
-				std::string newFat;
-				sandisc.allocate(buffer, sandisc.getTopFreeBlockIndex());
-				printf("Successfully allocated block.\n");
-				sendto(ListenSocket, (char*)&freeBlock, sizeof freeBlock, 0, (SOCKADDR*)&SenderAddr, (int*)&SenderAddrSize);
-				recvfrom(ListenSocket, buffer, BUFFER_SIZE, 0, (SOCKADDR*)&SenderAddr, (int*)&SenderAddrSize);
-				newFat = buffer;
+				sandisc.allocate(allocString, sandisc.getTopFreeBlockIndex());
+				printf("Receiver: Successfully allocated block.\nSending block location to update FAT.\n");
+				sendto(ListenSocket, (char*)&freeBlock, sizeof freeBlock, 0, (SOCKADDR*)&SenderAddr, SenderAddrSize);				
+			}
+			else if (!strcmp(buffer, "update")) {
+				// Update fat
+				char fatBuffer[256];
+				recvfrom(ListenSocket, fatBuffer, BUFFER_SIZE, 0, (SOCKADDR*)&SenderAddr, (int*)&SenderAddrSize);
+				std::string newFat = fatBuffer;
+				std::cout << "New FAT entry: " << newFat << std::endl;
 				sandisc.updateFat(newFat);
-				printf("FAT updated.\n");
+				printf("Receiver: FAT updated.\n");
 			}
 			else {
 				std::cout << SenderAddr.sin_port << ": " << buffer << std::endl;
 			}
 		}
-	} while (iResult > 0);
+	} //while (iResult > 0);
 }
