@@ -32,7 +32,7 @@ struct PEER {
 	char name;
 	addrinfo address;
 	std::string portNo;
-
+	int freeSpace;
 };
 
 struct CLIENTLIST {

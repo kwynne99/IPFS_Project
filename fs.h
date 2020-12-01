@@ -2,7 +2,8 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <string> 
+#include <string>
+#include <map>
 
 #include "helper.h"
 #include "sender.h"
@@ -49,6 +50,7 @@ public:
     void updateFat(string newFatEntry);
     //return index of top free block
     int getTopFreeBlockIndex();
+    int getFreeSpace();
 };
 
 /*int main() {
@@ -219,7 +221,8 @@ void discEmulator::allocate(string text, int indexToInsert) {
     setFreeBlockQuantity(freeBlockQuantity);
     //paste();
 }
-
+// To do: Use free space management to choose peers to allocate blocks to.
+// Idea: Request free space available from each peer, then allocate to peers with most free space first.
 void discEmulator::touch(string fileName, string text, vector<PEER> peerList) {
     //send signal for users to be in receive mode
     printf("Touch has been called.\n");
@@ -227,6 +230,22 @@ void discEmulator::touch(string fileName, string text, vector<PEER> peerList) {
     string newFatEntry = fileName;
     int recvTopFreeBlock;
     discEmulator recv;
+    // Free space management:
+    std::multimap<int, PEER, std::greater<int>> peerMap;
+    for (PEER& peer : peerList) {
+        char buffer[256] = "freeSpace";
+        sendto(SendSocket, buffer, 256, 0, peer.address.ai_addr, peer.address.ai_addrlen);
+        recvfrom(SendSocket, (char*)&peer.freeSpace, sizeof peer.freeSpace, 0, 0, 0);
+        std::cout << "Peer " << peer.name << "\tFree Space: " << peer.freeSpace << std::endl;
+        //std::multimap<int, PEER, std::greater<int>> peerMap;
+        peerMap.insert({ peer.freeSpace, peer });
+    }
+    std::cout << "Peers in order of free space." << std::endl;
+    for (auto const& pair : peerMap) {
+        std::cout << "Peer " << pair.second.name << "\tFree Space: " << pair.first << std::endl;
+    }
+    // Now I have the ordered multimap using freeSpace as the key.
+    // Idea: create vector of strings to create blocks to be allocated. Then go through that vector sending blocks to peers in order until all blocks are sent.
     for (int i = 0; i < text.length(); i += blockSize) {
         string newBlock = text.substr(i, blockSize);
         char buffer[256] = "touch";
@@ -242,9 +261,9 @@ void discEmulator::touch(string fileName, string text, vector<PEER> peerList) {
     for (PEER& peer : peerList) {
         char buffer[256] = "update";
         sendto(SendSocket, buffer, 256, 0, peer.address.ai_addr, peer.address.ai_addrlen); // Signals peers to receive a newFatEntry to update their FAT.
-        sendto(SendSocket, newFatEntry.c_str(), sizeof newFatEntry, 0, peer.address.ai_addr, peer.address.ai_addrlen); // Sending the newFatEntry
+        sendto(SendSocket, newFatEntry.c_str(), 256, 0, peer.address.ai_addr, peer.address.ai_addrlen); // Sending the newFatEntry
     }
-    
+    peerMap.clear();
     /*for (int i = 0; i < text.length(); i += blockSize - indexLength) {
         newFatEntry += to_string(topFreeBlockIndex) + "/";
         string newBlock = text.substr(i, blockSize - indexLength);
@@ -296,6 +315,10 @@ void discEmulator::updateFat(string newFatEntry) {
 
 int discEmulator::getTopFreeBlockIndex() {
     return stoi(disc.substr(fatSize + blockQuantity * blockSize, indexLength));
+}
+
+int discEmulator::getFreeSpace() {
+    return freeBlockQuantity;
 }
 
 /*

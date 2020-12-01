@@ -131,6 +131,10 @@ void Receiver::startReceiver() {
 				sandisc.updateFat(newFat);
 				printf("Receiver: FAT updated.\n");
 			}
+			else if (!strcmp(buffer, "freeSpace")) {
+				int freeSpace = sandisc.getFreeSpace();
+				sendto(ListenSocket, (char*)&freeSpace, sizeof freeSpace, 0, (SOCKADDR*)&SenderAddr, SenderAddrSize);
+			}
 			else {
 				std::cout << SenderAddr.sin_port << ": " << buffer << std::endl;
 			}
