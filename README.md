@@ -1,5 +1,5 @@
-# NFS_p2p
-Network File System over P2P Network
+# IPFS_Project
+IPFS Project for Capstone 499
 
 Created by: Kyle Wynne, Anton Marku, Brandon Lao, and Enis Tahiraj.
 
