@@ -17,3 +17,4 @@ During this process the blockchain keeps track of transactions taken by nodes on
 WIP:
 1) Smoother implementation of blockchain for tracking transactions.
 2) Additional features and commands to better simulate a functioning file system.
+
