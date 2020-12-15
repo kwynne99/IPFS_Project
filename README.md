@@ -4,7 +4,9 @@ Network File System over P2P Network
 Created by: Kyle Wynne, Anton Marku, Brandon Lao, and Enis Tahiraj.
 
 Network: Kyle Wynne
+
 File System: Anton Marku
+
 Blockchain: Brandon Lao & Enis Tahiraj
 
 Our program uses a Peer-to-peer network to distribute files to peers through the network.
