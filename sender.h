@@ -31,6 +31,7 @@ public:
 	void connectPeer();
 	void connectSelf(std::string senderPort);
 	void cmdPrompt();
+	bool handShake();
 };
 Sender::Sender() {
 	clientList.reserve(5);
@@ -230,6 +231,13 @@ void Sender::cmdPrompt() {
 			Sleep(1000);
 			printf("Touch command completed.\n");
 		}
+		/*else if (!temp.compare(0, 6, "remove")) {
+			char rmvBuffer[256] = "remove";
+			std::string fileName = temp.substr(8, temp.length() - 8);
+			std::cout << "Removing filename: " << fileName << std::endl;
+			sendto(SendSocket, rmvBuffer, 256, 0, clientList[0].ai_addr, (int)clientList[0].ai_addrlen);
+			sendto(SendSocket, fileName.c_str(), 256, 0, clientList[0].ai_addr, (int)clientList[0].ai_addrlen);
+		}*/
 		else if (!strcmp(buffer, "exit")) {
 			for (addrinfo &client : clientList) {
 				iResult = sendto(SendSocket, buffer, 256, 0, client.ai_addr, (int)client.ai_addrlen);

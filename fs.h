@@ -51,6 +51,7 @@ public:
     //return index of top free block
     int getTopFreeBlockIndex();
     int getFreeSpace();
+    //void remove(string fileName);
 };
 
 /*int main() {
@@ -229,7 +230,9 @@ void discEmulator::touch(string fileName, string text, vector<PEER> peerList) {
     SOCKET SendSocket = socket(AF_UNSPEC, SOCK_DGRAM, IPPROTO_UDP);
     string newFatEntry = fileName;
     int recvTopFreeBlock;
+    int counter{ 0 };
     discEmulator recv;
+    std::vector<std::string> blocks;
     // Free space management:
     std::multimap<int, PEER, std::greater<int>> peerMap;
     for (PEER& peer : peerList) {
@@ -244,60 +247,38 @@ void discEmulator::touch(string fileName, string text, vector<PEER> peerList) {
     for (auto const& pair : peerMap) {
         std::cout << "Peer " << pair.second.name << "\tFree Space: " << pair.first << std::endl;
     }
-    // Now I have the ordered multimap using freeSpace as the key.
-    // Idea: create vector of strings to create blocks to be allocated. Then go through that vector sending blocks to peers in order until all blocks are sent.
-    for (int i = 0; i < text.length(); i += blockSize) {
-        string newBlock = text.substr(i, blockSize);
-        char buffer[256] = "touch";
-        sendto(SendSocket, buffer, 256, 0, peerList[i / 20 % peerList.size()].address.ai_addr, peerList[i / 20 % peerList.size()].address.ai_addrlen);
-        sendto(SendSocket, newBlock.c_str(), blockSize, 0, peerList[i / 20 % peerList.size()].address.ai_addr, peerList[i / 20 % peerList.size()].address.ai_addrlen);
-        recvfrom(SendSocket, (char*)&recvTopFreeBlock, sizeof recvTopFreeBlock, 0, 0, 0);
-        printf("Sender: Received BlockIndex for FAT entry: %d\n", recvTopFreeBlock);
-        newFatEntry += 'p';
-        newFatEntry += peerList[i / 20 % peerList.size()].name;
-        newFatEntry +=',';
-        newFatEntry += to_string(recvTopFreeBlock) + '/';
+    for (int i = 0; i < text.length(); i += blockSize - 1) {
+        std::string newBlock = text.substr(i, blockSize - 1);
+        newBlock += '\0';
+        blocks.push_back(newBlock);
     }
+    while (counter < blocks.size()) {
+        for (auto const& pair : peerMap) {
+            char buffer[256] = "touch";
+            sendto(SendSocket, buffer, 256, 0, pair.second.address.ai_addr, pair.second.address.ai_addrlen);
+            // Now establish connection:
+            if (sendHandShake(pair.second.address)) {
+                struct header sendHeader;
+                sendHeader.acknum = 0, sendHeader.seqnum = 0, sendHeader.syn = 1;
+                sendto(SendSocket, blocks[counter].c_str(), blockSize, 0, pair.second.address.ai_addr, pair.second.address.ai_addrlen);
+                recvfrom(SendSocket, (char*)&recvTopFreeBlock, sizeof recvTopFreeBlock, 0, 0, 0);
+                counter++;
+                printf("Sender: Received BlockIndex for FAT entry: %d\n", recvTopFreeBlock);
+                newFatEntry += 'p';
+                newFatEntry += pair.second.name;
+                newFatEntry += ',';
+                newFatEntry += to_string(recvTopFreeBlock) + '/';
+                if (counter == blocks.size()) break;
+            }
+        }
+    }
+
     for (PEER& peer : peerList) {
         char buffer[256] = "update";
         sendto(SendSocket, buffer, 256, 0, peer.address.ai_addr, peer.address.ai_addrlen); // Signals peers to receive a newFatEntry to update their FAT.
         sendto(SendSocket, newFatEntry.c_str(), 256, 0, peer.address.ai_addr, peer.address.ai_addrlen); // Sending the newFatEntry
     }
     peerMap.clear();
-    /*for (int i = 0; i < text.length(); i += blockSize - indexLength) {
-        newFatEntry += to_string(topFreeBlockIndex) + "/";
-        string newBlock = text.substr(i, blockSize - indexLength);
-        int indexToInsert = topFreeBlockIndex;
-        int nextBlock = getNextBlockIndex(indexToInsert);
-        topFreeBlockIndex = nextBlock;
-        setTopFreeBlockIndex(topFreeBlockIndex);
-        freeBlockQuantity--;
-        setFreeBlockQuantity(freeBlockQuantity);
-        while (newBlock.length() < blockSize - indexLength) {
-            newBlock += '@';
-        }
-        if (!(i + blockSize - indexLength >= text.length())) {
-            newBlock += appendZeroIfShort(to_string(nextBlock), indexLength);
-        }
-        else {
-            string lastMarker(indexLength, '@');
-            newBlock += lastMarker;
-            cout << lastMarker << endl;
-        }
-        allocate(newBlock, indexToInsert);
-    }
-
-    int entryLength = newFatEntry.length();
-    int entryIndex = 0;
-    for (int i = 0; i < fatSize; i++) {
-        if (disc[i] == '@' && entryLength > 0) {
-            entryLength--;
-            disc[i] = newFatEntry[entryIndex];
-            entryIndex++;
-        }
-    }
-    paste();
-    */
 }
 
 void discEmulator::updateFat(string newFatEntry) {
@@ -312,6 +293,10 @@ void discEmulator::updateFat(string newFatEntry) {
     }
     paste();
 }
+
+/*void discEmulator::remove(string fileName) {
+    
+}*/
 
 int discEmulator::getTopFreeBlockIndex() {
     return stoi(disc.substr(fatSize + blockQuantity * blockSize, indexLength));

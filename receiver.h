@@ -40,6 +40,7 @@ Receiver::Receiver(std::string rPort) {
 	this->receiverPort = rPort;
 }
 
+
 void Receiver::startReceiver() {
 	// Create FAT
 	char peername;
@@ -100,6 +101,8 @@ void Receiver::startReceiver() {
 
 	//SOCKET ClientSocket; // Temporary socket used to accept connections.
 	struct sockaddr_in SenderAddr;
+	header recvbuff;
+	header sendbuff;
 	int SenderAddrSize = sizeof SenderAddr;
 	while (TRUE) {
 		char buffer[256];
@@ -111,16 +114,21 @@ void Receiver::startReceiver() {
 			//else if (!temp.compare(0, 5, "touch")) {
 			else if (!strcmp(buffer, "touch")) {
 				printf("Receiver: touch command has been used, waiting to receive block...\n");
-				// Get ready for incoming block and then allocate.
-				char blockBuffer[20];
-				iResult = recvfrom(ListenSocket, blockBuffer, 20, 0, (SOCKADDR*)&SenderAddr, (int*)&SenderAddrSize);
-				// After allocating block, send location back.
-				std::string allocString = blockBuffer;
-				std::cout << "Receiver: " << allocString << std::endl;
-				int freeBlock = sandisc.getTopFreeBlockIndex();
-				sandisc.allocate(allocString, sandisc.getTopFreeBlockIndex());
-				printf("Receiver: Successfully allocated block.\nSending block location to update FAT.\n");
-				sendto(ListenSocket, (char*)&freeBlock, sizeof freeBlock, 0, (SOCKADDR*)&SenderAddr, SenderAddrSize);				
+				if (receiveHandShake()) {
+					// Get ready for incoming block and then allocate.
+					char blockBuffer[20];
+					iResult = recvfrom(ListenSocket, blockBuffer, 20, 0, (SOCKADDR*)&SenderAddr, (int*)&SenderAddrSize);
+					// After allocating block, send location back.
+					std::string allocString = blockBuffer;
+					std::cout << "Receiver: " << allocString << std::endl;
+					int freeBlock = sandisc.getTopFreeBlockIndex();
+					sandisc.allocate(allocString, sandisc.getTopFreeBlockIndex());
+					printf("Receiver: Successfully allocated block.\nSending block location to update FAT.\n");
+					sendto(ListenSocket, (char*)&freeBlock, sizeof freeBlock, 0, (SOCKADDR*)&SenderAddr, SenderAddrSize);
+				}
+				else {
+					std::cout << "Handshake could not be completed. Blocks not allocated." << std::endl;
+				}
 			}
 			else if (!strcmp(buffer, "update")) {
 				// Update fat
@@ -135,6 +143,12 @@ void Receiver::startReceiver() {
 				int freeSpace = sandisc.getFreeSpace();
 				sendto(ListenSocket, (char*)&freeSpace, sizeof freeSpace, 0, (SOCKADDR*)&SenderAddr, SenderAddrSize);
 			}
+			/*else if (!strcmp(buffer, "remove")) {
+				char rmvBuffer[256];
+				recvfrom(ListenSocket, rmvBuffer, 256, 0, 0, 0);
+				std::string removeFile = rmvBuffer;
+
+			}*/
 			else {
 				std::cout << SenderAddr.sin_port << ": " << buffer << std::endl;
 			}
